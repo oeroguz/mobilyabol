@@ -196,17 +196,22 @@ export default function App(){
 
   // Auth
   const doLogin=async()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}
-    setErr("");const{error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
-    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}closeM();};
+    setErr("");const{data:sd,error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
+    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}
+    if(sd.user){const{data:profile}=await supabase.from("profiles").select("*").eq("id",sd.user.id).single();if(profile)setUser({...profile,email:sd.user.email});}
+    closeM();};
 
   const doRegister=async()=>{if(!fm.name||!fm.email||!fm.pw){setErr("Tüm alanları doldur");return;}
     setErr("");const{data,error}=await supabase.auth.signUp({email:fm.email,password:fm.pw});
     if(error){setErr(error.message);return;}
-    if(data.user){await supabase.from("profiles").insert({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});setUser({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});}closeM();};
+    if(data.user){await supabase.from("profiles").insert({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});setUser({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});}
+    closeM();};
 
   const doSLogin=async()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}
-    setErr("");const{error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
-    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}closeM();setPg("panel");};
+    setErr("");const{data:sd,error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
+    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}
+    if(sd.user){const{data:profile}=await supabase.from("profiles").select("*").eq("id",sd.user.id).single();if(profile)setUser({...profile,email:sd.user.email});}
+    closeM();setPg("panel");};
 
   const doSRegister=async()=>{if(!fm.firm||!fm.email||!fm.pw||!fm.phone){setErr("Zorunlu alanları doldur");return;}
     setErr("");
