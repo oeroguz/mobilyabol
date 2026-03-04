@@ -118,6 +118,8 @@ export default function App(){
       setLoading(false);
     };
     getSession();
+    // Fallback: max 1.5 saniye bekle
+    const t=setTimeout(()=>setLoading(false),1500);
     const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
       if(event==="SIGNED_IN"&&session){
         const{data:profile}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
@@ -125,7 +127,7 @@ export default function App(){
       }
       if(event==="SIGNED_OUT"){setUser(null);setPg("home");}
     });
-    return()=>subscription.unsubscribe();
+    return()=>{subscription.unsubscribe();clearTimeout(t);};
   },[]);
 
   // ========== LOAD PRODUCTS ==========
