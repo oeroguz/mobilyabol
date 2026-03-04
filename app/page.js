@@ -1,5 +1,6 @@
 "use client";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { supabase } from "../lib/supabase";
 
 const CATS = {
   "Oturma Grubu":["Koltuk Takımı","Köşe Koltuk","Tekli Koltuk / Berjer","TV Ünitesi","Sehpa","Kitaplık","Puf / Minder","Aksesuarlar"],
@@ -90,6 +91,28 @@ function ProductCard({p,stores,favs,onFav,onDetail}){
 export default function App(){
   const[pg,setPg]=useState("home");
   const[user,setUser]=useState(null);
+  const[loading,setLoading]=useState(true);
+
+  // Oturum kontrolü
+  useEffect(()=>{
+    const getSession=async()=>{
+      const{data:{session}}=await supabase.auth.getSession();
+      if(session){
+        const{data:profile}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+        if(profile)setUser({...profile,email:session.user.email});
+      }
+      setLoading(false);
+    };
+    getSession();
+    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(event,session)=>{
+      if(event==="SIGNED_IN"&&session){
+        const{data:profile}=await supabase.from("profiles").select("*").eq("id",session.user.id).single();
+        if(profile)setUser({...profile,email:session.user.email});
+      }
+      if(event==="SIGNED_OUT"){setUser(null);setPg("home");}
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
   const[modal,setModal]=useState(null);
   const[fm,setFm]=useState({name:"",email:"",pw:"",city:"İstanbul",firm:"",phone:"",locs:[],logo:""});
   const[err,setErr]=useState("");
@@ -109,7 +132,10 @@ export default function App(){
   const[sf,setSf]=useState({name:"",city:"",pw:"",pw2:"",phone:"",logo:"",locs:[]});
   const[cf,setCf]=useState({name:"",email:"",topic:"Genel",msg:""});
   const[cfOk,setCfOk]=useState(false);
-  const sendCf=()=>{if(!cf.name||!cf.email||!cf.msg){setErr("Tüm alanları doldur");return;}setErr("");setCfOk(true);setMsgs(p=>[...p,{id:"m_"+Date.now(),name:cf.name,email:cf.email,topic:cf.topic,msg:cf.msg,date:new Date().toLocaleDateString("tr-TR"),read:false}]);setCf({name:"",email:"",topic:"Genel",msg:""});};
+  const sendCf=async()=>{if(!cf.name||!cf.email||!cf.msg){setErr("Tüm alanları doldur");return;}setErr("");
+    await supabase.from("messages").insert({name:cf.name,email:cf.email,topic:cf.topic,message:cf.msg});
+    setCfOk(true);setCf({name:"",email:"",topic:"Genel",msg:""});
+  };
   // Admin
   const[sApps,setSApps]=useState([]); // mağaza başvuruları
   const[msgs,setMsgs]=useState([]); // iletişim mesajları
@@ -129,17 +155,40 @@ export default function App(){
   const closeM=()=>{setModal(null);setErr("");resetFm();};
   const openDet=(p)=>{setDet(p);setDImg(0);setPg("detail");};
 
-  const doLogin=()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}if(fm.email==="admin@mobilyabol.com"){setUser({type:"admin",name:"Admin",email:fm.email});closeM();setPg("admin");return;}setUser({type:"user",name:"Kullanıcı",email:fm.email,city:"İstanbul"});closeM();};
-  const doRegister=()=>{if(!fm.name||!fm.email||!fm.pw){setErr("Tüm alanları doldur");return;}setUser({type:"user",name:fm.name,email:fm.email,city:fm.city});closeM();};
-  const doSLogin=()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}setUser({type:"store",name:"Mağazam",email:fm.email,sid:"s1"});closeM();setPg("panel");};
+  const doLogin=async()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}
+    setErr("");
+    const{error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
+    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}
+    closeM();
+  };
+  const doRegister=async()=>{if(!fm.name||!fm.email||!fm.pw){setErr("Tüm alanları doldur");return;}
+    setErr("");
+    const{data,error}=await supabase.auth.signUp({email:fm.email,password:fm.pw});
+    if(error){setErr(error.message);return;}
+    if(data.user){
+      await supabase.from("profiles").insert({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});
+      setUser({id:data.user.id,name:fm.name,email:fm.email,city:fm.city,role:"user"});
+    }
+    closeM();
+  };
+  const doSLogin=async()=>{if(!fm.email||!fm.pw){setErr("Email ve şifre gir");return;}
+    setErr("");
+    const{error}=await supabase.auth.signInWithPassword({email:fm.email,password:fm.pw});
+    if(error){setErr(error.message==="Invalid login credentials"?"Email veya şifre hatalı":error.message);return;}
+    closeM();setPg("panel");
+  };
   const doSRegister=()=>{if(!fm.firm||!fm.email||!fm.pw||!fm.phone){setErr("Zorunlu alanları doldur");return;}setSApps(p=>[...p,{id:"sa_"+Date.now(),name:fm.firm,email:fm.email,phone:fm.phone,locs:fm.locs,logo:fm.logo,date:new Date().toLocaleDateString("tr-TR"),status:"pending"}]);closeM();setModal("sRegInfo");};
   const openSettings=()=>{if(!user)return;setSf({name:user.name,city:user.city||"İstanbul",pw:"",pw2:"",phone:user.phone||"",logo:user.logo||"",locs:user.locs||[]});setModal("settings");};
-  const saveSettings=()=>{if(!sf.name){setErr("Ad boş olamaz");return;}if(sf.pw&&sf.pw!==sf.pw2){setErr("Şifreler eşleşmiyor");return;}setUser(u=>({...u,name:sf.name,city:sf.city,phone:sf.phone,logo:sf.logo,locs:sf.locs}));closeM();};
+  const saveSettings=async()=>{if(!sf.name){setErr("Ad boş olamaz");return;}if(sf.pw&&sf.pw!==sf.pw2){setErr("Şifreler eşleşmiyor");return;}
+    if(user.id){await supabase.from("profiles").update({name:sf.name,city:sf.city}).eq("id",user.id);}
+    if(sf.pw){await supabase.auth.updateUser({password:sf.pw});}
+    setUser(u=>({...u,name:sf.name,city:sf.city,phone:sf.phone,logo:sf.logo,locs:sf.locs}));closeM();
+  };
   const onImgs=e=>{Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=ev=>setPf(p=>({...p,imgs:[...p.imgs,ev.target.result]}));r.readAsDataURL(f);});e.target.value="";};
   const saveProd=()=>{if(!pf.name||!pf.price)return;const im=pf.imgs.length?pf.imgs:[CI[pf.mc]||"📦"];if(eid)setProds(p=>p.map(x=>x.id===eid?{...x,name:pf.name,mc:pf.mc,sc:pf.sc,price:Number(pf.price),desc:pf.desc,imgs:im,status:"pending"}:x));else setProds(p=>[...p,{id:"p_"+Date.now(),sid:user?.sid||"s1",name:pf.name,mc:pf.mc,sc:pf.sc,price:Number(pf.price),desc:pf.desc,imgs:im,status:"pending"}]);setPf({name:"",mc:MC[0],sc:CATS[MC[0]][0],price:"",desc:"",imgs:[]});setEid(null);setPm("list");};
   const editP=p=>{setPf({name:p.name,mc:p.mc,sc:p.sc,price:String(p.price),desc:p.desc||"",imgs:p.imgs||[]});setEid(p.id);setPm("edit");};
 
-  const CSS=`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{background:#FAF6F2}input,textarea,select{font-family:'Plus Jakarta Sans',sans-serif}.card{background:#fff;border-radius:16px;border:1px solid #E2E8F0;overflow:hidden;cursor:pointer;transition:transform .25s,box-shadow .25s}.card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(30,41,59,.08)}.btn{padding:12px 28px;border-radius:10px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;font-size:.9rem;transition:all .2s;border:none}.b1{background:linear-gradient(135deg,#E8A07A,#D08A60);color:#fff;box-shadow:0 4px 16px rgba(91,163,217,.25)}.b1:hover{box-shadow:0 6px 24px rgba(91,163,217,.35)}.b2{background:transparent;color:#E8A07A;border:2px solid #E8A07A}.inp{width:100%;padding:12px 16px;border-radius:10px;border:2px solid #E2E8F0;font-size:.9rem;outline:none;background:#FAFBFD}.inp:focus{border-color:#E8A07A}@keyframes fu{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}.ch{padding:6px 14px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;border:2px solid #E2E8F0;background:#fff;color:#64748B;transition:all .15s}.ch.a{border-color:#E8A07A;background:#FFF3EB;color:#E8A07A}.lb{font-size:.78rem;font-weight:600;color:#64748B;display:block;margin-bottom:4px}.divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:#94A3B8;font-size:.78rem}.divider::before,.divider::after{content:'';flex:1;height:1px;background:#E2E8F0}`;
+  const CSS=`@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{background:#FAF6F2}input,textarea,select{font-family:'Plus Jakarta Sans',sans-serif}.card{background:#fff;border-radius:16px;border:1px solid #E2E8F0;overflow:hidden;cursor:pointer;transition:transform .25s,box-shadow .25s}.card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(30,41,59,.08)}.btn{padding:12px 28px;border-radius:10px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;font-size:.9rem;transition:all .2s;border:none}.b1{background:linear-gradient(135deg,#E8A07A,#D08A60);color:#fff;box-shadow:0 4px 16px rgba(91,163,217,.25)}.b1:hover{box-shadow:0 6px 24px rgba(91,163,217,.35)}.b2{background:transparent;color:#E8A07A;border:2px solid #E8A07A}.inp{width:100%;padding:12px 16px;border-radius:10px;border:2px solid #E2E8F0;font-size:.9rem;outline:none;background:#FAFBFD;color:#2C1810}.inp:focus{border-color:#E8A07A}@keyframes fu{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}@keyframes fi{from{opacity:0}to{opacity:1}}.ch{padding:6px 14px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;border:2px solid #E2E8F0;background:#fff;color:#64748B;transition:all .15s}.ch.a{border-color:#E8A07A;background:#FFF3EB;color:#E8A07A}.lb{font-size:.78rem;font-weight:600;color:#64748B;display:block;margin-bottom:4px}.divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:#94A3B8;font-size:.78rem}.divider::before,.divider::after{content:'';flex:1;height:1px;background:#E2E8F0}`;
 
   // All modal content rendered inline
   const mHead=(t)=>(<div style={{textAlign:"center",marginBottom:20}}><Logo size={30}/><h2 style={{fontFamily:"'Sora',sans-serif",fontSize:"1.3rem",fontWeight:800,color:"#2C1810",marginTop:12}}>{t}</h2></div>);
@@ -168,7 +217,7 @@ export default function App(){
       <div style={{background:"#FFF3EB",borderRadius:12,padding:"12px 16px",marginTop:12,textAlign:"center"}}>
         <p style={{fontSize:".82rem",color:"#64748B"}}>Mağaza hesabınız mı var? <span onClick={()=>{setErr("");setModal("sLogin");}} style={{color:"#E8A07A",cursor:"pointer",fontWeight:700}}>Mağaza Girişi →</span></p>
       </div>
-      <p style={{textAlign:"center",marginTop:8,fontSize:".72rem",color:"#94A3B8"}}>Demo: herhangi bir email/şifre ile giriş yap · Admin: admin@mobilyabol.com</p>
+      <p style={{textAlign:"center",marginTop:8,fontSize:".72rem",color:"#94A3B8"}}>Gerçek email adresi ile kayıt olun</p>
     </>);
 
     if(modal==="register") return overlay(<>{mHead("Kayıt Ol")}
@@ -263,6 +312,8 @@ export default function App(){
   const ims=det?.imgs||["📦"];const cur=ims[dImg]||ims[0];
   const sid=user?.sid||"s1";const myP=prods.filter(p=>p.sid===sid);const panFilt=pcF?myP.filter(p=>p.mc===pcF):myP;const cc={};myP.forEach(p=>{cc[p.mc]=(cc[p.mc]||0)+1;});
 
+  if(loading)return(<div style={{minHeight:"100vh",background:"#FAF6F2",display:"flex",alignItems:"center",justifyContent:"center"}}><style>{CSS}</style><Logo size={40}/></div>);
+
   return(<div style={{minHeight:"100vh",background:"#FAF6F2",fontFamily:"'Plus Jakarta Sans',sans-serif"}}><style>{CSS}</style>
     {renderModal()}
 
@@ -279,7 +330,7 @@ export default function App(){
           <span onClick={openSettings} style={{fontSize:".82rem",color:"#64748B",fontWeight:500,cursor:"pointer",borderBottom:"1px dashed #E8A07A"}}>{user.name}</span>
           {user.type==="store"&&<button className="btn b2" onClick={()=>{setPg("panel");setPm("list");}} style={{padding:"6px 14px",fontSize:".78rem"}}>Panel</button>}
           {user.type==="admin"&&<button className="btn b2" onClick={()=>{setPg("admin");setAdmTab("prods");}} style={{padding:"6px 14px",fontSize:".78rem",borderColor:"#E8A07A",color:"#E8A07A"}}>⚙️ Admin</button>}
-          <button onClick={()=>{setUser(null);setPg("home");}} style={{background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:".78rem"}}>Çıkış</button>
+          <button onClick={async()=>{await supabase.auth.signOut();setUser(null);setPg("home");}} style={{background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:".78rem"}}>Çıkış</button>
         </div>):(<div style={{display:"flex",alignItems:"center",gap:6}}>
           <select className="inp" value={cityF} onChange={e=>{setCityF(e.target.value);if(pg==="home"||pg==="list"){setPg("list");setDet(null);}}} style={{width:"auto",padding:"6px 10px",fontSize:".8rem",borderRadius:8,minWidth:100}}>
             <option value="">Tüm İller</option>{CTS.map(c=><option key={c}>{c}</option>)}
