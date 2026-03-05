@@ -235,6 +235,7 @@ export default function App(){
     closeM();setModal("sRegInfo");
   };
 
+  const doLogout=async()=>{await supabase.auth.signOut();setUser(null);setFavs([]);setMyStore(null);setMyProds([]);setPg("home");};
   const openSettings=()=>{if(!user)return;setSf({name:user.name,city:user.city||"İstanbul",pw:"",pw2:"",phone:myStore?.phone||"",logo:myStore?.logo_url||"",locs:myStore?.store_locations||[]});setModal("settings");};
   const saveSettings=async()=>{if(!sf.name){setErr("Ad boş olamaz");return;}if(sf.pw&&sf.pw!==sf.pw2){setErr("Şifreler eşleşmiyor");return;}
     if(user.id)await supabase.from("profiles").update({name:sf.name,city:sf.city}).eq("id",user.id);
@@ -422,7 +423,7 @@ export default function App(){
           <span onClick={openSettings} style={{fontSize:".82rem",color:"#64748B",fontWeight:500,cursor:"pointer",borderBottom:"1px dashed #E8A07A"}}>{user.name}</span>
           {user.role==="store"&&<button className="btn b2" onClick={()=>{setPg("panel");setPm("list");}} style={{padding:"6px 14px",fontSize:".78rem"}}>Panel</button>}
           {user.role==="admin"&&<button className="btn b2" onClick={()=>{setPg("admin");setAdmTab("prods");}} style={{padding:"6px 14px",fontSize:".78rem",borderColor:"#E8A07A",color:"#E8A07A"}}>⚙️ Admin</button>}
-          <button onClick={async()=>{await supabase.auth.signOut();setUser(null);setPg("home");}} style={{background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:".78rem"}}>Çıkış</button>
+          <button onClick={doLogout} className="btn b2" style={{padding:"6px 12px",fontSize:".78rem"}}>Çıkış</button>
         </div>):(<div style={{display:"flex",alignItems:"center",gap:6}}>
           <select className="inp" value={cityF} onChange={e=>{setCityF(e.target.value);if(pg==="home"||pg==="list"){setPg("list");setDet(null);}}} style={{width:"auto",padding:"6px 10px",fontSize:".8rem",borderRadius:8,minWidth:100}}>
             <option value="">Tüm İller</option>{CTS.map(c=><option key={c}>{c}</option>)}
